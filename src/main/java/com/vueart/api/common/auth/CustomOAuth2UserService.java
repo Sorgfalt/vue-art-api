@@ -2,6 +2,7 @@ package com.vueart.api.common.auth;
 
 import com.vueart.api.common.auth.dto.CustomOauth2UserDetails;
 import com.vueart.api.common.auth.dto.GoogleUserDetails;
+import com.vueart.api.common.auth.dto.KakaoUserDetails;
 import com.vueart.api.common.auth.dto.OAuth2UserInfo;
 import com.vueart.api.core.enums.Code;
 import com.vueart.api.entity.User;
@@ -32,10 +33,16 @@ public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequ
 
         OAuth2UserInfo oAuth2UserInfo = null;
 
+        Code.SocialLoginType socialLoginType = null;
+
         if (provider.equals("google")) {
             log.info("구글 로그인");
+            socialLoginType = Code.SocialLoginType.GOOGLE;
             oAuth2UserInfo = new GoogleUserDetails(oAuth2User.getAttributes());
-
+        } else if (provider.equals("kakao")) {
+            log.info("카카오 로그인");
+            socialLoginType = Code.SocialLoginType.KAKAO;
+            oAuth2UserInfo = new KakaoUserDetails(oAuth2User.getAttributes());
         }
         String providerId = oAuth2UserInfo.getProviderId();
         String email = oAuth2UserInfo.getEmail();
@@ -48,11 +55,11 @@ public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequ
 
         if (findUser.isEmpty()) {
             user = User.builder()
-                    .userId("google_" + providerId)
+                    .userId(provider + providerId)
                     .email(email)
                     .business(Code.YN.N)
                     .userName(name)
-                    .provider(provider)
+                    .provider(socialLoginType.toString())
                     .providerId(providerId)
                     .role(Code.Role.USER)
                     .build();

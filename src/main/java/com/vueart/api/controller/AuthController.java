@@ -5,6 +5,7 @@ import com.vueart.api.common.response.SuccessResponse;
 import com.vueart.api.core.enums.Code;
 import com.vueart.api.dto.request.user.SignInRequest;
 import com.vueart.api.dto.request.user.SignUpRequest;
+import com.vueart.api.dto.response.auth.TokenDto;
 import com.vueart.api.service.auth.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -15,7 +16,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
@@ -49,8 +53,8 @@ public class AuthController {
             @ApiResponse(responseCode = "500", description = "서버 내부 오류")
     })
     @PostMapping("/sign-in")
-    public CommonApiResponse signIn(@Valid @RequestBody SignInRequest req) {
-        String accessToken = authService.signIn(req);
-        return new CommonApiResponse(HttpStatus.OK.value(), accessToken, Code.ApiResponseCode.SUCCESS.getCode());
+    public CommonApiResponse<TokenDto> signIn(@Valid @RequestBody SignInRequest req) {
+        TokenDto accessToken = authService.signIn(req);
+        return new CommonApiResponse<>(HttpStatus.OK.value(), Code.ApiResponseCode.SUCCESS.getCode(), accessToken);
     }
 }

@@ -2,12 +2,11 @@ package com.vueart.api.common.auth.dto;
 
 import com.vueart.api.entity.User;
 import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 
 import java.util.Collection;
-import java.util.List;
+import java.util.Collections;
 import java.util.Map;
 
 public class CustomOauth2UserDetails implements UserDetails, OAuth2User {
@@ -22,7 +21,7 @@ public class CustomOauth2UserDetails implements UserDetails, OAuth2User {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
+        return Collections.emptyList();
     }
 
     @Override
@@ -33,6 +32,7 @@ public class CustomOauth2UserDetails implements UserDetails, OAuth2User {
     public Long getUserId() {
         return user.getId();
     }
+
     @Override
     public String getName() {
         return null;
@@ -52,7 +52,7 @@ public class CustomOauth2UserDetails implements UserDetails, OAuth2User {
         return user.getUserName();
     }
 
-    public String getRole(){
+    public String getRole() {
         return user.getRole().name();
     }
 

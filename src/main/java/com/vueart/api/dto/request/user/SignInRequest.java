@@ -8,3 +8,4 @@ public record SignInRequest(
         @NotNull(message = "password는 필수입니다.")
         String password) {
 }
+

@@ -1,15 +1,7 @@
 package com.vueart.api.config.security.jwt;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.vueart.api.core.enums.Code.ErrorCode;
-import com.vueart.api.core.exception.ErrorResponse;
+import com.vueart.api.common.auth.dto.CustomOauth2UserDetails;
 import com.vueart.api.entity.User;
-import com.vueart.api.repository.user.UserRepository;
-import com.vueart.api.service.user.UserService;
-import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.MalformedJwtException;
-import io.jsonwebtoken.UnsupportedJwtException;
-import io.jsonwebtoken.security.SignatureException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -17,60 +9,82 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.Collections;
-import java.util.Optional;
+import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-    private final TokenProvider jwtProvider;
-
-    private final UserRepository userRepository;
+    private final TokenProvider jwtTokenProvider;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
-        final String token = request.getHeader("Authorization");
+        String authHeader = request.getHeader("Authorization");
 
-        String username = null;
-
-        // Bearer token 검증 후 user name 조회
-        if(token != null && !token.isEmpty()) {
-            String jwtToken = token.substring(7);
-
-            username = jwtProvider.getUsernameFromToken(jwtToken);
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            log.debug("Invalid JWT token");
+            filterChain.doFilter(request, response);
+            return;
         }
 
-        // token 검증 완료 후 SecurityContextHolder 내 인증 정보가 없는 경우 저장
-        if(username != null && !username.isEmpty() && SecurityContextHolder.getContext().getAuthentication() == null) {
-            // Spring Security Context Holder 인증 정보 set
-            SecurityContextHolder.getContext().setAuthentication(getUserAuth(username));
+        String token = authHeader.substring(7);
+
+//        if (redisService.checkBlackList(token)) {
+//            log.debug("JWT token is blacklisted");
+//            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+//            return;
+//        }
+
+        if (jwtTokenProvider.validateToken(token)) {
+            log.debug("JWT token validated");
+            User user;
+            Long userId = jwtTokenProvider.getUserIdFromToken(token);
+            String email = jwtTokenProvider.getEmailFromToken(token);
+
+            Map<String, Object> attributes = jwtTokenProvider.getAttributesFromToken(token);
+            CustomOauth2UserDetails userDetails;
+            if (attributes != null && !attributes.isEmpty()) {
+                String name = "Unknown User";
+                if (attributes.containsKey("kakao_account")) {
+                    Map<String, Object> kakaoAccount = (Map<String, Object>) attributes.get("kakao_account");
+                    if (kakaoAccount.containsKey("profile")) {
+                        Map<String, Object> profile = (Map<String, Object>) kakaoAccount.get("profile");
+                        if (profile.containsKey("nickname")) {
+                            name = profile.get("nickname").toString();
+                        }
+                    }
+                } else if (attributes.containsKey("name")) {
+                    // Google의 경우 name 속성 사용
+                    name = attributes.get("name").toString();
+                }
+
+                userDetails = new CustomOauth2UserDetails(User.builder()
+                        .id(userId)
+                        .email(email)
+                        .userName(name)
+                        .build(), attributes);
+            } else {
+                user = User.builder()
+                        .id(userId)
+                        .email(email)
+                        .build();
+                userDetails = new CustomOauth2UserDetails(
+                        user,
+                        attributes != null ? attributes : Collections.emptyMap()
+                );
+            }
+
+            UsernamePasswordAuthenticationToken authentication =
+                    new UsernamePasswordAuthenticationToken(userDetails, null, Collections.emptyList());
+            SecurityContextHolder.getContext().setAuthentication(authentication);
         }
-
-        filterChain.doFilter(request,response);
-    }
-
-    /**
-     * token의 사용자 idx를 이용하여 사용자 정보 조회하고, UsernamePasswordAuthenticationToken 생성
-     *
-     * @param username 사용자 idx
-     * @return 사용자 UsernamePasswordAuthenticationToken
-     */
-    private UsernamePasswordAuthenticationToken getUserAuth(String username) {
-        Optional<User> userInfo = userRepository.findById(Long.parseLong(username));
-
-        return new UsernamePasswordAuthenticationToken(userInfo.get().getId(),
-                userInfo.get().getPassword(),
-                Collections.singleton(new SimpleGrantedAuthority(userInfo.get().getRole().name()))
-        );
+        filterChain.doFilter(request, response);
     }
 }

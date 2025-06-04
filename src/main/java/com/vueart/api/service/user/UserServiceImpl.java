@@ -1,8 +1,10 @@
 package com.vueart.api.service.user;
 
 import com.vueart.api.common.util.AES256Util;
+import com.vueart.api.common.util.BusinessRegisterApiUtil;
 import com.vueart.api.core.enums.Code;
 import com.vueart.api.core.exception.VueArtApiException;
+import com.vueart.api.dto.request.business.BusinessRegisterListDto;
 import com.vueart.api.dto.request.user.UpdatePasswordRequest;
 import com.vueart.api.entity.User;
 import com.vueart.api.repository.user.UserRepository;
@@ -19,6 +21,7 @@ public class UserServiceImpl implements UserService {
     private final UserRepository userRepository;
     private final AES256Util aes256Util;
     private final PasswordEncoder passwordEncoder;
+    private final BusinessRegisterApiUtil businessRegisterApiUtil;
 
     @Override
     @Transactional
@@ -51,5 +54,10 @@ public class UserServiceImpl implements UserService {
         String encodedNewPassword = passwordEncoder.encode(newPassword);
         User updated = user.updatePassword(request.userId(), encodedNewPassword);
         userRepository.save(updated);
+    }
+
+    @Override
+    public boolean isBusinessRegistered(BusinessRegisterListDto req) {
+        return businessRegisterApiUtil.getBusinessRegisterCheck(req);
     }
 }

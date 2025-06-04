@@ -1,20 +1,16 @@
 package com.vueart.api.common.response;
 
-import com.vueart.api.core.enums.Code.ApiResponseCode;
-import lombok.AccessLevel;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 
 @Getter
-@NoArgsConstructor(access = AccessLevel.PRIVATE)
-public class CommonApiResponse {
-    private int status;
-    private Object data;
-    private String message;
+public class CommonApiResponse<T> {
+    private final Integer status;
+    private final Object message;
+    private final T data;
 
-    public CommonApiResponse(int httpCode, Object data, String code) {
-        this.status = httpCode;
+    public CommonApiResponse(Integer status, Object message, T data) {
+        this.status = status;
+        this.message = message;
         this.data = data;
-        this.message = ApiResponseCode.getCode(code);
     }
 }

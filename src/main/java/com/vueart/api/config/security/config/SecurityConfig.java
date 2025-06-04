@@ -1,6 +1,7 @@
 package com.vueart.api.config.security.config;
 
 import com.vueart.api.common.auth.CustomOAuth2UserService;
+import com.vueart.api.common.auth.handler.OAuth2FailHandler;
 import com.vueart.api.common.auth.handler.OAuth2SuccessHandler;
 import com.vueart.api.config.security.exception.JwtAuthenticationEntryPoint;
 import com.vueart.api.config.security.handler.JwtAccessDeniedHandler;
@@ -13,7 +14,6 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.config.annotation.web.configurers.CsrfConfigurer;
 import org.springframework.security.config.annotation.web.configurers.HttpBasicConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -33,9 +33,31 @@ import java.util.List;
 public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final OAuth2SuccessHandler oAuth2SuccessHandler;
+    private final OAuth2FailHandler oAuth2FailHandler;
     private final CustomOAuth2UserService customOAuth2UserService;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
+
+    private static final List<String> PUBLIC_URLS = List.of(
+            "/swagger-ui.html",
+            "/swagger-ui/**",
+            "/v3/api-docs/**",
+            "/api-docs/**",
+            "/webjars/**",
+            "/api/auth/**",
+            "/api/exhibition/**",
+            "/api/favorite/category/**",
+            "/api/category/**",
+            "/api/subscriptions/**",
+            "/api/notifications/**",
+            "/api/reservation/**",
+            "/api/ticket/**",
+            "/oauth2/**",
+            "/login/**",
+            "/auth/login/kakao/**",
+            "/login/oauth2/code/kakao",
+            "/public/**"
+    );
 
     @Bean
     @Description("패스워드 암호화")
@@ -44,48 +66,31 @@ public class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain filterChain(HttpSecurity security) throws Exception {
-        security
+    SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
                 .httpBasic(HttpBasicConfigurer::disable)
                 .csrf(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
-                .cors(configure -> configure.configurationSource(corsConfigurationSource()))
-                .sessionManagement(configurer -> configurer.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(request ->
-                        request
-                                .requestMatchers(
-                                    "/swagger-ui.html",
-                                    "/swagger-ui/**",
-                                    "/v3/api-docs/**",
-                                    "/api-docs/**",
-                                    "/webjars/**",
-                                    "/api/auth/**",
-                                    "/api/favorite/category/**",
-                                    "/api/category/**",
-                                    "/api/subscriptions/**",
-                                    "/api/notifications/**",
-                                    "/oauth2/**", 
-                                    "/login/**"
-                                ).permitAll()
-                                .requestMatchers("/public/**").permitAll()  // 공개 접근 경로
-                                .requestMatchers("/api/**").authenticated() // 인증 필요 경로
-                                .requestMatchers("/api/exhibition/**").authenticated()
-                                .requestMatchers("/oauth2/**", "/login/**").permitAll()
-                                .anyRequest().authenticated())
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(PUBLIC_URLS.toArray(new String[0])).permitAll()
+                        .requestMatchers("/api/**").authenticated()
+                        .anyRequest().authenticated()
+                )
                 .oauth2Login(oauth2 -> oauth2
-                        .loginPage("/oauth2/authorization/google")
                         .successHandler(oAuth2SuccessHandler)
+                        .failureHandler(oAuth2FailHandler)
                         .userInfoEndpoint(userInfo -> userInfo.userService(customOAuth2UserService))
                 )
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(jwtAuthenticationEntryPoint)
                         .accessDeniedHandler(jwtAccessDeniedHandler)
                 )
-                .sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(jwtAuthenticationFilter, BasicAuthenticationFilter.class);
-        return security.build();
+
+        return http.build();
     }
 
     @Bean

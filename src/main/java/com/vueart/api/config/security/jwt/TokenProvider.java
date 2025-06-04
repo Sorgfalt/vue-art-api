@@ -1,197 +1,140 @@
 package com.vueart.api.config.security.jwt;
 
-import io.jsonwebtoken.*;
+import com.vueart.api.core.enums.Code;
+import com.vueart.api.core.exception.CommonBadRequestException;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Header;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.function.Function;
 
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class TokenProvider {
-    @Value("${jwt.secret}") //토큰 생성시 필요한 secretKey
-    private String secret;
+    @Value("${jwt.access-token-expire-time}")
+    private long accessExpirationTime;
+
+    @Value("${jwt.refresh-token-expire-time}")
+    private long refreshExpirationTime;
+
+    @Value("${jwt.secret}")
+    private String secretKey;
     private SecretKey key;
 
     @Value("${jwt.issuer}")
     private String issuer;
 
-    private static final long JWT_TOKEN_VALID = (long) 1000 * 60 * 30;
+    private final SignatureAlgorithm signatureAlgorithm = SignatureAlgorithm.HS256;
 
     @PostConstruct
     public void init() {
-        key = Keys.hmacShaKeyFor(secret.getBytes());
+        byte[] keyBytes = Base64.getDecoder().decode(secretKey);
+        key = Keys.hmacShaKeyFor(keyBytes);
     }
 
-    /**
-     * token Username 조회
-     *
-     * @param token JWT
-     * @return token Username
-     */
-    public String getUsernameFromToken(final String token) {
-        return getClaimFromToken(token, Claims::getId);
-    }
-
-    /**
-     * token 사용자 속성 정보 조회
-     *
-     * @param token          JWT
-     * @param claimsResolver Get Function With Target Claim
-     * @param <T>            Target Claim
-     * @return 사용자 속성 정보
-     */
-    public <T> T getClaimFromToken(final String token, final Function<Claims, T> claimsResolver) {
-        // token 유효성 검증
-        if (Boolean.FALSE.equals(validateToken(token)))
-            return null;
-
-        final Claims claims = getAllClaimsFromToken(token);
-
-        return claimsResolver.apply(claims);
-    }
-
-    /**
-     * token 사용자 모든 속성 정보 조회
-     *
-     * @param token JWT
-     * @return All Claims
-     */
-    private Claims getAllClaimsFromToken(final String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(key)
-                .build()
-                .parseClaimsJws(token)
-                .getBody();
-    }
-
-    /**
-     * 토큰 만료 일자 조회
-     *
-     * @param token JWT
-     * @return 만료 일자
-     */
-    public Date getExpirationDateFromToken(final String token) {
-        return getClaimFromToken(token, Claims::getExpiration);
-    }
-
-    /**
-     * access token 생성
-     *
-     * @param id token 생성 id
-     * @return access token
-     */
-    public String generateAccessToken(final String id) {
-        return generateAccessToken(id, new HashMap<>());
-    }
-
-    /**
-     * access token 생성
-     *
-     * @param id token 생성 id
-     * @return access token
-     */
-    public String generateAccessToken(final long id) {
-        return generateAccessToken(String.valueOf(id), new HashMap<>());
-    }
-
-    /**
-     * access token 생성
-     *
-     * @param id     token 생성 id
-     * @param claims token 생성 claims
-     * @return access token
-     */
-    public String generateAccessToken(final String id, final Map<String, Object> claims) {
-        return doGenerateAccessToken(id, claims);
-    }
-
-    /**
-     * JWT access token 생성
-     *
-     * @param id     token 생성 id
-     * @param claims token 생성 claims
-     * @return access token
-     */
-    private String doGenerateAccessToken(final String id, final Map<String, Object> claims) {
+    public String createAccessToken(Long userId, String email, Map<String, Object> attributes) {
+        Date now = new Date();
+        Claims claims = Jwts.claims().setSubject(email).setId(String.valueOf(userId));
+        if (attributes != null) {
+            claims.putAll(attributes);
+        }
         return Jwts.builder()
+                .setHeaderParam(Header.TYPE, Header.JWT_TYPE)
+                .setIssuer(issuer)
                 .setClaims(claims)
-                .setId(id)
-                .setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration(new Date(System.currentTimeMillis() + JWT_TOKEN_VALID)) // 30분
-                .signWith(key)
+                .setIssuedAt(now)
+                .setExpiration(new Date(now.getTime() + accessExpirationTime))
+                .signWith(key, signatureAlgorithm)
                 .compact();
     }
 
-    /**
-     * refresh token 생성
-     *
-     * @param id token 생성 id
-     * @return refresh token
-     */
-    public String generateRefreshToken(final String id) {
-        return doGenerateRefreshToken(id);
-    }
-
-    /**
-     * refresh token 생성
-     *
-     * @param id token 생성 id
-     * @return refresh token
-     */
-    public String generateRefreshToken(final long id) {
-        return doGenerateRefreshToken(String.valueOf(id));
-    }
-
-    /**
-     * refresh token 생성
-     *
-     * @param id token 생성 id
-     * @return refresh token
-     */
-    private String doGenerateRefreshToken(final String id) {
+    public String createRefreshToken(Long userId, String email) {
+        Date now = new Date();
         return Jwts.builder()
-                .setId(id)
-                .setExpiration(new Date(System.currentTimeMillis() + (JWT_TOKEN_VALID * 2) * 24)) // 24시간
-                .setIssuedAt(new Date(System.currentTimeMillis()))
-                .signWith(key)
+                .setIssuer(issuer)
+                .setSubject(email)
+                .setId(String.valueOf(userId))
+                .setIssuedAt(now)
+                .setExpiration(new Date(now.getTime() + refreshExpirationTime))
+                .signWith(key, signatureAlgorithm)
                 .compact();
     }
 
-    /**
-     * token 검증
-     *
-     * @param token JWT
-     * @return token 검증 결과
-     */
-    public Boolean validateToken(final String token) {
+    public String getJwtFromHeader(HttpServletRequest request) {
+        String header = request.getHeader("Authorization");
+        if (header == null || !header.startsWith("Bearer ")) {
+            throw new CommonBadRequestException(Code.ErrorCode.INVALID_JWT_SIGNATURE);
+        }
+        return header.substring(7);
+    }
+
+    public boolean validateToken(String token) {
         try {
             Jwts.parserBuilder()
                     .setSigningKey(key)
                     .build()
                     .parseClaimsJws(token);
             return true;
-        } catch (SecurityException e) {
-            log.warn("Invalid JWT signature: {}", e.getMessage());
-        } catch (MalformedJwtException e) {
-            log.warn("Invalid JWT token: {}", e.getMessage());
-        } catch (ExpiredJwtException e) {
-            log.warn("JWT token is expired: {}", e.getMessage());
-        } catch (UnsupportedJwtException e) {
-            log.warn("JWT token is unsupported: {}", e.getMessage());
-        } catch (IllegalArgumentException e) {
-            log.warn("JWT claims string is empty: {}", e.getMessage());
+        } catch (Exception e) {
+            return false;
         }
+    }
 
-        return false;
+    public Long getUserIdFromToken(String token) {
+        Claims claims = Jwts.parserBuilder()
+                .setSigningKey(key)
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+        return Long.valueOf(claims.getId());
+    }
+
+    public String getEmailFromToken(String token) {
+        Claims claims = Jwts.parserBuilder()
+                .setSigningKey(key)
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+        return claims.getSubject();
+    }
+
+    public String getExpirationTime(String token) {
+        Claims claims = Jwts.parserBuilder()
+                .setSigningKey(key)
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+
+        long expiration = claims.getExpiration().getTime(); // 만료 시간 (밀리초)
+        long currentTime = System.currentTimeMillis(); // 현재 시간 (밀리초)
+        return String.valueOf(expiration - currentTime); // 남은 유효 시간
+    }
+
+    public Map<String, Object> getAttributesFromToken(String token) {
+        Claims claims = Jwts.parserBuilder()
+                .setSigningKey(key)
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+        Map<String, Object> attributes = new HashMap<>();
+        claims.forEach((key, value) -> {
+            if (!"sub".equals(key) && !"jti".equals(key) && !"iat".equals(key) && !"exp".equals(key)) {
+                attributes.put(key, value);
+            }
+        });
+        return attributes;
     }
 }
